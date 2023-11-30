@@ -9,10 +9,13 @@ import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.controller.ProfiledPIDController;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.simulation.DifferentialDrivetrainSim.KitbotGearing;
@@ -28,26 +31,26 @@ import edu.wpi.first.wpilibj.simulation.DifferentialDrivetrainSim.KitbotGearing;
  */
 public class Robot extends TimedRobot {
 
-  private CANSparkMax driveMotor1;
-  private CANSparkMax driveMotor2;
-  private CANSparkMax driveMotor3;
-  private CANSparkMax driveMotor4;
-  private CANSparkMax steeringMotor1;
-  private CANSparkMax steeringMotor2;
-  private CANSparkMax steeringMotor3;
-  private CANSparkMax steeringMotor4;
-  private CANCoder sensor1;
-  private CANCoder sensor2;
-  private CANCoder sensor3;
-  private CANCoder sensor4;
+  private CANSparkMax backRightDrive;
+  private CANSparkMax frontRightDrive;
+  private CANSparkMax frontLeftDrive;
+  private CANSparkMax backLeftDrive;
+  private CANSparkMax backRightSteering;
+  private CANSparkMax frontRightSteering;
+  private CANSparkMax frontLeftSteering;
+  private CANSparkMax backLeftSteering;
+  private CANCoder backRightSensor;
+  private CANCoder frontRightSensor;
+  private CANCoder frontLeftSensor;
+  private CANCoder backLeftSensor;
   private XboxController xboxController;
   private long timeMs = System.currentTimeMillis();
-  private PIDController module1Steer;
-  private PIDController module2Steer;
-  private PIDController module3Steer;
-  private PIDController module4Steer;
+  private ProfiledPIDController backRightModule;
+  private ProfiledPIDController frontRightModule;
+  private ProfiledPIDController frontLeftModule;
+  private ProfiledPIDController backLeftModule;
   private SwerveDriveKinematics kinematics;
-
+  private CANCoder[] sensors;
   /**
    * This function is run when the robot is first started up and should be used
    * for any
@@ -56,48 +59,61 @@ public class Robot extends TimedRobot {
   @Override
   public void robotInit() {
 
-    driveMotor1 = new CANSparkMax(12, MotorType.kBrushless);
-    driveMotor1.setInverted(true);
-    steeringMotor1 = new CANSparkMax(10, MotorType.kBrushless);
-    steeringMotor1.setInverted(true);
-    sensor1 = new CANCoder(11);
-    sensor1.configMagnetOffset(-12.480);
+    backRightDrive = new CANSparkMax(12, MotorType.kBrushless);
+    backRightDrive.setInverted(true);
+    backRightSteering = new CANSparkMax(10, MotorType.kBrushless);
+    backRightSensor = new CANCoder(11);
+    backRightSensor.configMagnetOffset(-106.523);
 
-    driveMotor2 = new CANSparkMax(9, MotorType.kBrushless);
-    steeringMotor2 = new CANSparkMax(7, MotorType.kBrushless);
-    sensor2 = new CANCoder(8);
-    sensor2.configMagnetOffset(79.014);
+    frontRightDrive = new CANSparkMax(9, MotorType.kBrushless);
+    frontRightSteering = new CANSparkMax(7, MotorType.kBrushless);
+    frontRightSteering.setInverted(true);
+    frontRightSensor = new CANCoder(8);
+    frontRightSensor.configMagnetOffset(-95.098);
 
-    driveMotor3 = new CANSparkMax(6, MotorType.kBrushless);
-    driveMotor3.setInverted(true);
-    steeringMotor3 = new CANSparkMax(4, MotorType.kBrushless);
-    sensor3 = new CANCoder(5);
-    sensor3.configMagnetOffset(-299.619);
+    frontLeftDrive = new CANSparkMax(6, MotorType.kBrushless);
+    frontLeftSteering = new CANSparkMax(4, MotorType.kBrushless);
+    frontLeftSensor = new CANCoder(5);
+    frontLeftSensor.configMagnetOffset(0);
 
-    driveMotor4 = new CANSparkMax(3, MotorType.kBrushless);
-    steeringMotor4 = new CANSparkMax(1, MotorType.kBrushless);
-    sensor4 = new CANCoder(2);
-    sensor4.configMagnetOffset(186.24);
+    backLeftDrive = new CANSparkMax(3, MotorType.kBrushless);
+    backLeftSteering = new CANSparkMax(1, MotorType.kBrushless);
+    backLeftSensor = new CANCoder(2);
+    backLeftSensor.configMagnetOffset(-59.062);
+
+    sensors = new CANCoder[] {
+      frontLeftSensor, frontRightSensor, backLeftSensor, backRightSensor
+    };
 
     xboxController = new XboxController(0);
-    // Module 1 PID
-    module1Steer = new PIDController(1.0 / 360.0, 1.0 / 3600, 0);
-    module1Steer.enableContinuousInput(0, 360);
+
+    double kp = .15;
+    // double kp = 8.5 / 360.0;
+    double ki = 0;
+    // double kd = 0;
+    double kd = 2.5E-14;
+
+    // // Module 1 PID
+
+    int maxVelocity = 180;
+    double maxAcceleration = 288;
+    backRightModule = new ProfiledPIDController(kp, ki, kd, new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+    backRightModule.enableContinuousInput(0, 360);
     // Module 2 PID
-    module2Steer = new PIDController(1.0 / 360.0, 1.0 / 3600, 0);
-    module2Steer.enableContinuousInput(0, 360);
+    frontRightModule = new ProfiledPIDController(kp, ki, kd, new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+    frontRightModule.enableContinuousInput(0, 360);
     // Module 3 PID
-    module3Steer = new PIDController(1.0 / 360.0, 1.0 / 3600, 0);
-    module3Steer.enableContinuousInput(0, 360);
+    frontLeftModule =  new ProfiledPIDController(kp, ki, kd, new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+    frontLeftModule.enableContinuousInput(0, 360);
     // Module 4 PID
-    module4Steer = new PIDController(1.0 / 360.0, 1.0 / 3600, 0);
-    module4Steer.enableContinuousInput(0, 360);
+    backLeftModule =  new ProfiledPIDController(kp, ki, kd, new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
+    backLeftModule.enableContinuousInput(0, 360);
 
     Translation2d[] leverarms = new Translation2d[] {
         new Translation2d(.255, .285),
+        new Translation2d(.255, -.285),
         new Translation2d(-.255, .285),
-        new Translation2d(-.255, -.285),
-        new Translation2d(.255, -.285)
+        new Translation2d(-.255, -.285)
 
     };
 
@@ -128,24 +144,36 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during teleoperated mode. */
   @Override
   public void teleopPeriodic() {
-    ChassisSpeeds speeds = new ChassisSpeeds(xboxController.getLeftX(), xboxController.getLeftY(), xboxController.getRightX());
+    ChassisSpeeds speeds = new ChassisSpeeds(-xboxController.getLeftY(), -xboxController.getLeftX(),.7* xboxController.getRightX()); //GET RID OF RANDOM NUMBERS!!
     SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
-    swerveSteer(steeringMotor1, sensor1, states[0].angle.getDegrees(), module1Steer, states[0].speedMetersPerSecond, driveMotor1);
-    swerveSteer(steeringMotor2, sensor2, states[1].angle.getDegrees(), module2Steer,  states[1].speedMetersPerSecond, driveMotor2);
-    swerveSteer(steeringMotor3, sensor3, states[2].angle.getDegrees(), module3Steer,  states[2].speedMetersPerSecond, driveMotor3);
-    swerveSteer(steeringMotor4, sensor4, states[3].angle.getDegrees(), module4Steer,  states[3].speedMetersPerSecond, driveMotor4);
+
+    for(int stateNum = 0; stateNum<4; stateNum = stateNum + 1) {
+      SwerveModuleState swerveState = states[stateNum];
+    //  states[stateNum] = SwerveModuleState.optimize(swerveState, Rotation2d.fromDegrees(sensors[stateNum].getAbsolutePosition()));
+    }
+
+    // frontRightSteering.set(xboxController.getRightX());
+    // swerveSteer(backRightSteering, backRightSensor, states[3].angle.getDegrees(), backRightModule, states[3].speedMetersPerSecond, backRightDrive);
+    swerveSteer(frontRightSteering, frontRightSensor, states[1].angle.getDegrees(), frontRightModule,  states[1].speedMetersPerSecond, frontRightDrive);
+    // swerveSteer(frontLeftSteering, frontLeftSensor, states[0].angle.getDegrees(), frontLeftModule,  states[0].speedMetersPerSecond, frontLeftDrive);
+    // swerveSteer(backLeftSteering, backLeftSensor, states[2].angle.getDegrees(), backLeftModule,  states[2].speedMetersPerSecond, backLeftDrive);
+
+    
     if (System.currentTimeMillis() - timeMs > 100) {
       timeMs = System.currentTimeMillis();
       System.out.println(
-          "position:" + sensor1.getAbsolutePosition() + " position2:" + sensor2.getAbsolutePosition() + " position3:"
-              + sensor3.getAbsolutePosition() + " position4:" + sensor4.getAbsolutePosition());
+        "xboxcontroller right" + xboxController.getRightX() +
+        " position2:" + frontRightSensor.getAbsolutePosition() +
+        " setpt: " + states[1].angle.getDegrees());
     }
 
   }
-  public void swerveSteer(CANSparkMax steer, CANCoder sensorSwerve,double setpoint, PIDController pID,double drivespeed,CANSparkMax drive) {
+
+  public void swerveSteer(CANSparkMax steer, CANCoder sensorSwerve, double setpoint, ProfiledPIDController pID,
+      double drivespeed, CANSparkMax drive) {
     double position = sensorSwerve.getAbsolutePosition();
     double outputSteer = pID.calculate(position, setpoint);
-    steer.set(outputSteer);
+    steer.set(outputSteer); // TODO CHANGE 
     drive.set(drivespeed);
   }
 
