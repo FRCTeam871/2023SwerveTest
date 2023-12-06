@@ -66,6 +66,7 @@ public class Robot extends TimedRobot {
     backRightSensor.configMagnetOffset(-106.523);
 
     frontRightDrive = new CANSparkMax(9, MotorType.kBrushless);
+    frontRightDrive.setInverted(true);
     frontRightSteering = new CANSparkMax(7, MotorType.kBrushless);
     frontRightSteering.setInverted(true);
     frontRightSensor = new CANCoder(8);
@@ -87,16 +88,16 @@ public class Robot extends TimedRobot {
 
     xboxController = new XboxController(0);
 
-    double kp = .15;
-    // double kp = 8.5 / 360.0;
+    // double kp = .15;
+    double kp = 2.0 / 360.0;
     double ki = 0;
     // double kd = 0;
-    double kd = 2.5E-14;
+    double kd = 0;
 
     // // Module 1 PID
 
-    int maxVelocity = 180;
-    double maxAcceleration = 288;
+    int maxVelocity = 36000;
+    double maxAcceleration = 100000;
     backRightModule = new ProfiledPIDController(kp, ki, kd, new TrapezoidProfile.Constraints(maxVelocity, maxAcceleration));
     backRightModule.enableContinuousInput(0, 360);
     // Module 2 PID
@@ -144,19 +145,27 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during teleoperated mode. */
   @Override
   public void teleopPeriodic() {
-    ChassisSpeeds speeds = new ChassisSpeeds(-xboxController.getLeftY(), -xboxController.getLeftX(),.7* xboxController.getRightX()); //GET RID OF RANDOM NUMBERS!!
+    double controllerLeftY = -xboxController.getLeftY();
+    double controllerLeftX = -xboxController.getLeftX();
+    double controllerRightX = -xboxController.getRightX();
+    double deadBandThresh = .1;
+
+
+    ChassisSpeeds speeds = new ChassisSpeeds(
+      deadbandControllerInput(controllerLeftY, deadBandThresh),
+      deadbandControllerInput(controllerLeftX, deadBandThresh),
+      deadbandControllerInput(controllerRightX, deadBandThresh)); //GET RID OF RANDOM NUMBERS!!
     SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
 
     for(int stateNum = 0; stateNum<4; stateNum = stateNum + 1) {
       SwerveModuleState swerveState = states[stateNum];
-    //  states[stateNum] = SwerveModuleState.optimize(swerveState, Rotation2d.fromDegrees(sensors[stateNum].getAbsolutePosition()));
+     states[stateNum] = SwerveModuleState.optimize(swerveState, Rotation2d.fromDegrees(sensors[stateNum].getAbsolutePosition()));
     }
 
-    // frontRightSteering.set(xboxController.getRightX());
-    // swerveSteer(backRightSteering, backRightSensor, states[3].angle.getDegrees(), backRightModule, states[3].speedMetersPerSecond, backRightDrive);
+    swerveSteer(backRightSteering, backRightSensor, states[3].angle.getDegrees(), backRightModule, states[3].speedMetersPerSecond, backRightDrive);
     swerveSteer(frontRightSteering, frontRightSensor, states[1].angle.getDegrees(), frontRightModule,  states[1].speedMetersPerSecond, frontRightDrive);
-    // swerveSteer(frontLeftSteering, frontLeftSensor, states[0].angle.getDegrees(), frontLeftModule,  states[0].speedMetersPerSecond, frontLeftDrive);
-    // swerveSteer(backLeftSteering, backLeftSensor, states[2].angle.getDegrees(), backLeftModule,  states[2].speedMetersPerSecond, backLeftDrive);
+    swerveSteer(frontLeftSteering, frontLeftSensor, states[0].angle.getDegrees(), frontLeftModule,  states[0].speedMetersPerSecond, frontLeftDrive);
+    swerveSteer(backLeftSteering, backLeftSensor, states[2].angle.getDegrees(), backLeftModule,  states[2].speedMetersPerSecond, backLeftDrive);
 
     
     if (System.currentTimeMillis() - timeMs > 100) {
@@ -175,6 +184,15 @@ public class Robot extends TimedRobot {
     double outputSteer = pID.calculate(position, setpoint);
     steer.set(outputSteer); // TODO CHANGE 
     drive.set(drivespeed);
+  }
+  public double deadbandControllerInput(double joystickValue,double threshold){
+    if  ( Math.abs(joystickValue) < threshold ) {
+      return 0;
+    }
+    else{
+      return joystickValue;
+    }
+
   }
 
   /** This function is called once each time the robot enters test mode. */
